@@ -17,6 +17,7 @@ mod segmentation_manager;
 
 pub mod directory;
 
+const MAX_ENTRY_SIZE: usize = 16_000_000;
 // 4KB
 const MAX_MESSAGE_SIZE: usize = 4096;
 // 4GB
@@ -30,7 +31,7 @@ pub struct Storage {
     pub directory: Directory,
     indices: Indices,
     segmentation_manager: SegmentationManager,
-    retrivable_buffer: [u8; MAX_MESSAGE_SIZE],
+    retrivable_buffer: Vec<u8>,
     batch: Batch,
     compaction: bool,
 }
@@ -59,7 +60,7 @@ impl Storage {
             directory,
             indices,
             segmentation_manager,
-            retrivable_buffer: [0; MAX_MESSAGE_SIZE],
+            retrivable_buffer: Vec::with_capacity(MAX_ENTRY_SIZE),
             batch: Batch::new(),
             compaction,
         })
@@ -129,7 +130,7 @@ impl Storage {
 
         for offset in prune.offsets {
             let length = self.indices.data.len();
-            self.indices.data.insert(length, *offset);
+            self.indices.data.insert(length, offset.clone());
         }
 
         let latest_indices_segment = self

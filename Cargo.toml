@@ -2,7 +2,7 @@
 name = "axi"
 version = "0.1.0"
 edition = "2021"
-description = "A relatively fast KV storage with persistent storage"
+description = "A relatively fast queue storage with persistency"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

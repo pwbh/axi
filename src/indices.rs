@@ -6,7 +6,7 @@ use crate::{offset::Offset, segment::Segment};
 
 #[derive(Debug)]
 pub struct Indices {
-    pub data: HashMap<usize, Offset>,
+    pub data: HashMap<String, Offset>,
     pub total_bytes: usize,
 }
 
@@ -20,7 +20,7 @@ impl Indices {
         };
 
         for segment in segments {
-            let mut buf: [u8; 32] = [0u8; OFFSET_SIZE];
+            let mut buf: [u8; OFFSET_SIZE] = [0u8; OFFSET_SIZE];
             let mut file = &(*segment).file;
 
             loop {
@@ -32,25 +32,35 @@ impl Indices {
 
                 file.seek(io::SeekFrom::Current(OFFSET_SIZE as i64));
 
-                let index = usize::from_le_bytes([
+                let key_size = usize::from_le_bytes([
                     buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7],
                 ]);
 
+                let key_end_index = 8 + key_size;
+
+                let key = std::str::from_utf8(&buf[8..key_end_index]).map_err(|e| e.into())?;
+
+                let other = &buf[key_end_index..];
+
                 let start = usize::from_le_bytes([
-                    buf[8], buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15],
+                    other[8], other[9], other[10], other[11], other[12], other[13], other[14],
+                    other[15],
                 ]);
 
                 let data_size = usize::from_le_bytes([
-                    buf[16], buf[17], buf[18], buf[19], buf[20], buf[21], buf[22], buf[23],
+                    other[16], other[17], other[18], other[19], other[20], other[21], other[22],
+                    other[23],
                 ]);
 
                 let segment_index = usize::from_le_bytes([
-                    buf[24], buf[25], buf[26], buf[27], buf[28], buf[29], buf[30], buf[31],
+                    other[24], other[25], other[26], other[27], other[28], other[29], other[30],
+                    other[31],
                 ]);
 
-                indices
-                    .data
-                    .insert(index, Offset::from(index, start, data_size, segment_index));
+                indices.data.insert(
+                    key.to_string(),
+                    Offset::from(key, start, data_size, segment_index),
+                );
 
                 indices.total_bytes += data_size;
             }
