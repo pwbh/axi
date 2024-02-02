@@ -38,7 +38,12 @@ impl Indices {
 
                 let key_end_index = 8 + key_size;
 
-                let key = std::str::from_utf8(&buf[8..key_end_index]).map_err(|e| e.into())?;
+                let key = std::str::from_utf8(&buf[8..key_end_index]).map_err(|_| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Couldn't parse key from given bytes.",
+                    )
+                })?;
 
                 let other = &buf[key_end_index..];
 
@@ -82,7 +87,7 @@ mod tests {
         let mut offsets = vec![];
 
         for i in 0..50 {
-            let offset = Offset::new(i, 15, 2500, 0).unwrap();
+            let offset = Offset::new(&format!("key_{}", i), 15, 2500, 0).unwrap();
             offsets.push(offset);
         }
 
@@ -111,7 +116,7 @@ mod tests {
         let indices_result = Indices::from(&segments).await.unwrap();
 
         for (k, v) in indices_result.data {
-            assert_eq!(v, Offset::new(k, 15, 2500, 0).unwrap())
+            assert_eq!(v, Offset::new(&k, 15, 2500, 0).unwrap())
         }
 
         directory
