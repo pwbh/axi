@@ -14,7 +14,6 @@ mod macros;
 mod offset;
 mod segment;
 mod segmentation_manager;
-mod storage_sender;
 
 pub mod directory;
 
