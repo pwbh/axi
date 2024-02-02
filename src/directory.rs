@@ -132,7 +132,6 @@ mod tests {
     use super::*;
 
     #[async_std::test]
-    #[cfg_attr(miri, ignore)]
     async fn open_read_and_delete() {
         let dir = Directory::new("events-replica-1").await.unwrap();
 
@@ -148,7 +147,6 @@ mod tests {
     }
 
     #[async_std::test]
-    #[cfg_attr(miri, ignore)]
     async fn open_write_and_delete() {
         let dir = Directory::new("events-replica-2").await.unwrap();
         let open_partition_result = dir.open_write(DataType::Partition, 0).await;

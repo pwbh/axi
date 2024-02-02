@@ -221,7 +221,6 @@ mod tests {
     }
 
     #[async_std::test]
-    #[cfg_attr(miri, ignore)]
     async fn new_creates_instances() {
         // (l)eader/(r)eplica_topic-name_partition-count
         let storage = Storage::new("TEST_l_reservations_1", false).await;
@@ -230,7 +229,6 @@ mod tests {
     }
 
     #[async_std::test]
-    #[cfg_attr(miri, ignore)]
     async fn set_returns_ok() {
         let mut storage = Storage::new(&function!(), false).await.unwrap();
 
@@ -249,7 +247,6 @@ mod tests {
     }
 
     #[async_std::test]
-    #[cfg_attr(miri, ignore)]
     async fn get_returns_ok() {
         let message_count = 500;
         let test_message = b"messssagee";
@@ -276,7 +273,6 @@ mod tests {
     }
 
     #[async_std::test]
-    #[cfg_attr(miri, ignore)]
     async fn get_returns_none_on_index_out_of_bounds() {
         let total_count = 5;
 
