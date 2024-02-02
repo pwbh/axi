@@ -8,7 +8,7 @@ use async_std::{
     io,
 };
 
-const NYX_BASE_PATH: &str = "nyx";
+const BASE_PATH: &str = "axi";
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum DataType {
@@ -22,13 +22,13 @@ pub struct Directory {
     title: String,
 }
 
-// Path example: nyx/title/filename
+// Path example: axi/title/filename
 
 /// Directory is used to manage the internal creation and opening of the files.
 impl Directory {
     pub async fn new(title: &str) -> io::Result<Self> {
         let dir = Self {
-            base_path: format!("{}/{}", NYX_BASE_PATH, title),
+            base_path: format!("{}/{}", BASE_PATH, title),
             title: title.to_owned(),
         };
 
