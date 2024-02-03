@@ -17,7 +17,7 @@ mod segmentation_manager;
 
 pub mod directory;
 
-const MAX_ENTRY_SIZE: usize = 16_000_000;
+const MAX_ENTRY_SIZE: usize = 16_777_216;
 // 4KB
 const MAX_MESSAGE_SIZE: usize = 4096;
 // 4GB
@@ -50,7 +50,7 @@ impl Storage {
             .await
             .map_err(|e| format!("Storage (Indices::from): {}", e))?;
 
-        println!("{:#?}", indices);
+        //  println!("{:#?}", indices);
 
         if compaction {
             // async_std::task::spawn(Compactor::run(segment_receiver));
@@ -60,7 +60,7 @@ impl Storage {
             directory,
             indices,
             segmentation_manager,
-            retrivable_buffer: Vec::with_capacity(MAX_ENTRY_SIZE),
+            retrivable_buffer: vec![0; MAX_ENTRY_SIZE],
             batch: Batch::new(),
             compaction,
         })
@@ -144,9 +144,13 @@ impl Storage {
     pub async fn get(&mut self, key: &str) -> Option<&[u8]> {
         let offset = self.indices.data.get(key).cloned()?;
 
+        println!("Offset: {:#?}", offset);
+
         let segment = self
             .segmentation_manager
             .get_segment_by_index(DataType::Partition, offset.segment_count())?;
+
+        println!("Segment: {:#?}", segment);
 
         self.seek_bytes_between(offset.start(), offset.data_size(), segment)
             .await
@@ -163,6 +167,8 @@ impl Storage {
         if let Err(e) = segment_file.seek(SeekFrom::Start(start as u64)).await {
             println!("error {}", e);
         }
+
+        println!("LEN OF RET: {}", self.retrivable_buffer.len());
 
         if let Err(e) = segment_file
             .read(&mut self.retrivable_buffer[..data_size])
@@ -226,24 +232,26 @@ mod tests {
         {"id":8,"title":"Microsoft Surface Laptop 4","description":"Style and speed. Stand out on ...","price":1499,"discountPercentage":10.23,"rating":4.43,"stock":68,"brand":"Microsoft Surface","category":"laptops","thumbnail":"https://cdn.dummyjson.com/product-images/8/thumbnail.jpg","images":["https://cdn.dummyjson.com/product-images/8/1.jpg","https://cdn.dummyjson.com/product-images/8/2.jpg","https://cdn.dummyjson.com/product-images/8/3.jpg","https://cdn.dummyjson.com/product-images/8/4.jpg","https://cdn.dummyjson.com/product-images/8/thumbnail.jpg"]}
         "#;
 
-        const item_key: &str = "user_129310";
+        const TEST_ITEM_KEY: &str = "user_129310";
 
-        storage.set(item_key, value.as_bytes()).await.unwrap();
+        storage.set(TEST_ITEM_KEY, value.as_bytes()).await.unwrap();
 
         // Make sure all messages are written to the disk before we continue with our tests
         storage.flush().await.unwrap();
 
-        let result = storage.get(item_key).await.unwrap();
+        let result = storage.get(TEST_ITEM_KEY).await.unwrap();
 
         assert_eq!(result, value.as_bytes());
     }
 
     #[async_std::test]
     async fn get_returns_ok() {
-        let message_count = 500;
-        let test_message = b"messssagee";
+        let message_count = 5;
+        let test_message = b"testable message here";
 
         let mut storage = setup_test_storage(&function!(), test_message, message_count).await;
+
+        println!("{:#?}", storage.indices.data);
 
         let length = storage.len();
 

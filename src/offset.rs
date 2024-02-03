@@ -24,7 +24,8 @@ impl Offset {
         }
 
         let mut key = [0; MAX_KEY_SIZE];
-        key.copy_from_slice(k.as_bytes());
+        let key_slice = &mut key[..k.len()];
+        key_slice.copy_from_slice(k.as_bytes());
 
         Ok(Self {
             key,
@@ -37,7 +38,8 @@ impl Offset {
 
     pub fn from(k: &str, start: usize, data_size: usize, segment_count: usize) -> Self {
         let mut key = [0; MAX_KEY_SIZE];
-        key.copy_from_slice(k.as_bytes());
+        let key_slice = &mut key[..k.len()];
+        key_slice.copy_from_slice(k.as_bytes());
 
         Self {
             key,
@@ -66,6 +68,8 @@ impl Offset {
     }
 
     pub fn key(&self) -> String {
-        std::str::from_utf8(&self.key).unwrap().to_string()
+        std::str::from_utf8(&self.key[..self.key_size])
+            .unwrap()
+            .to_string()
     }
 }
