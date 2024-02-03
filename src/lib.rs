@@ -17,9 +17,8 @@ mod segmentation_manager;
 
 pub mod directory;
 
+// 16MB
 const MAX_ENTRY_SIZE: usize = 16_777_216;
-// 4KB
-const MAX_MESSAGE_SIZE: usize = 4096;
 // 4GB
 const MAX_SEGMENT_SIZE: u64 = 4_000_000_000;
 // 16KB
@@ -67,11 +66,11 @@ impl Storage {
     }
 
     pub async fn set(&mut self, key: &str, buf: &[u8]) -> Result<(), String> {
-        if buf.len() > MAX_MESSAGE_SIZE {
+        if buf.len() > MAX_ENTRY_SIZE {
             return Err(format!(
                 "Payload size {} kb, max payload allowed {} kb",
                 buf.len(),
-                MAX_MESSAGE_SIZE
+                MAX_ENTRY_SIZE
             ));
         }
 
@@ -144,13 +143,9 @@ impl Storage {
     pub async fn get(&mut self, key: &str) -> Option<&[u8]> {
         let offset = self.indices.data.get(key).cloned()?;
 
-        println!("Offset: {:#?}", offset);
-
         let segment = self
             .segmentation_manager
             .get_segment_by_index(DataType::Partition, offset.segment_count())?;
-
-        println!("Segment: {:#?}", segment);
 
         self.seek_bytes_between(offset.start(), offset.data_size(), segment)
             .await
@@ -167,8 +162,6 @@ impl Storage {
         if let Err(e) = segment_file.seek(SeekFrom::Start(start as u64)).await {
             println!("error {}", e);
         }
-
-        println!("LEN OF RET: {}", self.retrivable_buffer.len());
 
         if let Err(e) = segment_file
             .read(&mut self.retrivable_buffer[..data_size])
@@ -246,12 +239,10 @@ mod tests {
 
     #[async_std::test]
     async fn get_returns_ok() {
-        let message_count = 5;
+        let message_count = 500;
         let test_message = b"testable message here";
 
         let mut storage = setup_test_storage(&function!(), test_message, message_count).await;
-
-        println!("{:#?}", storage.indices.data);
 
         let length = storage.len();
 
@@ -266,9 +257,11 @@ mod tests {
 
         println!("Read {} messages in: {:.2?}", length, elapsed);
 
+        println!("storage len: {}", storage.len());
+
         assert_eq!(storage.len(), message_count);
 
-        cleanup(&storage).await;
+        // cleanup(&storage).await;
     }
 
     #[async_std::test]

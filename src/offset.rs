@@ -1,4 +1,4 @@
-pub const MAX_KEY_SIZE: usize = 1024;
+pub const MAX_KEY_SIZE: usize = 128;
 
 #[derive(Debug, Clone, PartialEq)]
 #[repr(C)]
