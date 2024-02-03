@@ -1,4 +1,4 @@
-use std::{ptr::NonNull, sync::Arc};
+use std::sync::Arc;
 
 use async_std::io;
 
@@ -8,36 +8,14 @@ use crate::{
     MAX_SEGMENT_SIZE,
 };
 
-#[derive(PartialEq)]
-pub enum SegmentMode {
-    Write,
-    Read,
-}
-
 #[derive(Debug)]
 pub struct SegmentationManager {
     indices_segments: Vec<Arc<Segment>>,
     pub partition_segments: Vec<Arc<Segment>>,
-    latest_index_segment: NonNull<Vec<Arc<Segment>>>,
     directory: Directory,
 }
 
 impl SegmentationManager {
-    pub async fn new(directory: &Directory) -> io::Result<Self> {
-        let latest_indices_segment =
-            Segment::new(&directory, crate::directory::DataType::Indices, 0).await?;
-
-        let latest_partition_segment =
-            Segment::new(&directory, crate::directory::DataType::Partition, 0).await?;
-
-        Ok(Self {
-            indices_segments: vec![Arc::new(latest_indices_segment)],
-            partition_segments: vec![Arc::new(latest_partition_segment)],
-            directory: directory.clone(),
-            latest_index_segment: NonNull::dangling(),
-        })
-    }
-
     pub async fn from(directory: &Directory) -> io::Result<Self> {
         let mut indices_segments = vec![];
         let mut partition_segments = vec![];
@@ -79,7 +57,6 @@ impl SegmentationManager {
         Ok(Self {
             indices_segments,
             partition_segments,
-            latest_index_segment: NonNull::dangling(),
             directory: directory.clone(),
         })
     }

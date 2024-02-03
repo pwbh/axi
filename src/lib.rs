@@ -4,6 +4,7 @@ use async_std::io::{self, prelude::SeekExt, ReadExt, SeekFrom, WriteExt};
 use batch::{Batch, BatchState};
 use directory::{DataType, Directory};
 use indices::Indices;
+use offset::Offset;
 use segment::Segment;
 use segmentation_manager::SegmentationManager;
 
@@ -17,8 +18,8 @@ mod segmentation_manager;
 
 pub mod directory;
 
-// 4KB
-const MAX_MESSAGE_SIZE: usize = 4096;
+// 16MB
+const MAX_ENTRY_SIZE: usize = 16_777_216;
 // 4GB
 const MAX_SEGMENT_SIZE: u64 = 4_000_000_000;
 // 16KB
@@ -30,7 +31,7 @@ pub struct Storage {
     pub directory: Directory,
     indices: Indices,
     segmentation_manager: SegmentationManager,
-    retrivable_buffer: [u8; MAX_MESSAGE_SIZE],
+    retrivable_buffer: Vec<u8>,
     batch: Batch,
     compaction: bool,
 }
@@ -49,7 +50,7 @@ impl Storage {
             .await
             .map_err(|e| format!("Storage (Indices::from): {}", e))?;
 
-        println!("{:#?}", indices);
+        //  println!("{:#?}", indices);
 
         if compaction {
             // async_std::task::spawn(Compactor::run(segment_receiver));
@@ -59,18 +60,18 @@ impl Storage {
             directory,
             indices,
             segmentation_manager,
-            retrivable_buffer: [0; MAX_MESSAGE_SIZE],
+            retrivable_buffer: vec![0; MAX_ENTRY_SIZE],
             batch: Batch::new(),
             compaction,
         })
     }
 
-    pub async fn set(&mut self, buf: &[u8]) -> Result<(), String> {
-        if buf.len() > MAX_MESSAGE_SIZE {
+    pub async fn set(&mut self, key: &str, buf: &[u8]) -> Result<(), String> {
+        if buf.len() > MAX_ENTRY_SIZE {
             return Err(format!(
                 "Payload size {} kb, max payload allowed {} kb",
                 buf.len(),
-                MAX_MESSAGE_SIZE
+                MAX_ENTRY_SIZE
             ));
         }
 
@@ -83,23 +84,14 @@ impl Storage {
             .get_last_segment_size(DataType::Partition)
             .await;
 
-        let last_total_entries = self.len();
-
-        let batch_state = self.batch.add(
-            buf,
-            latest_segment_count,
-            latest_segment_size,
-            last_total_entries,
-        )?;
+        let batch_state = self
+            .batch
+            .add(key, buf, latest_segment_count, latest_segment_size)?;
 
         if batch_state == BatchState::ShouldFlush {
             self.flush().await?;
-            self.batch.add(
-                buf,
-                latest_segment_count,
-                latest_segment_size,
-                last_total_entries,
-            )?;
+            self.batch
+                .add(key, buf, latest_segment_count, latest_segment_size)?;
         }
 
         Ok(())
@@ -114,7 +106,7 @@ impl Storage {
     }
 
     async fn prune_to_disk(&mut self) -> io::Result<usize> {
-        let prune = &self.batch.get_prunable();
+        let prune: batch::Prune<'_> = self.batch.get_prunable();
 
         let latest_partition_segment = self
             .segmentation_manager
@@ -128,8 +120,7 @@ impl Storage {
             .await?;
 
         for offset in prune.offsets {
-            let length = self.indices.data.len();
-            self.indices.data.insert(length, *offset);
+            self.indices.data.insert(offset.key(), offset.clone());
         }
 
         let latest_indices_segment = self
@@ -150,8 +141,8 @@ impl Storage {
         self.indices.data.len()
     }
 
-    pub async fn get(&mut self, index: usize) -> Option<&[u8]> {
-        let offset = self.indices.data.get(&index).cloned()?;
+    pub async fn get(&mut self, key: &str) -> Option<&[u8]> {
+        let offset: Offset = self.indices.data.get(key).cloned()?;
 
         let segment = self
             .segmentation_manager
@@ -201,15 +192,9 @@ mod tests {
 
         let messages = vec![test_message; count];
 
-        let now = Instant::now();
-
-        for message in messages {
-            storage.set(message).await.unwrap();
+        for (i, message) in messages.iter().enumerate() {
+            storage.set(&format!("key_{}", i), message).await.unwrap();
         }
-
-        let elapsed = now.elapsed();
-
-        println!("Write {} messages in: {:.2?}", count, elapsed);
 
         // Make sure all messages are written to the disk before we continue with our tests
         storage.flush().await.unwrap();
@@ -220,7 +205,6 @@ mod tests {
     }
 
     #[async_std::test]
-    #[cfg_attr(miri, ignore)]
     async fn new_creates_instances() {
         // (l)eader/(r)eplica_topic-name_partition-count
         let storage = Storage::new("TEST_l_reservations_1", false).await;
@@ -229,7 +213,6 @@ mod tests {
     }
 
     #[async_std::test]
-    #[cfg_attr(miri, ignore)]
     async fn set_returns_ok() {
         let mut storage = Storage::new(&function!(), false).await.unwrap();
 
@@ -237,21 +220,22 @@ mod tests {
         {"id":8,"title":"Microsoft Surface Laptop 4","description":"Style and speed. Stand out on ...","price":1499,"discountPercentage":10.23,"rating":4.43,"stock":68,"brand":"Microsoft Surface","category":"laptops","thumbnail":"https://cdn.dummyjson.com/product-images/8/thumbnail.jpg","images":["https://cdn.dummyjson.com/product-images/8/1.jpg","https://cdn.dummyjson.com/product-images/8/2.jpg","https://cdn.dummyjson.com/product-images/8/3.jpg","https://cdn.dummyjson.com/product-images/8/4.jpg","https://cdn.dummyjson.com/product-images/8/thumbnail.jpg"]}
         "#;
 
-        storage.set(value.as_bytes()).await.unwrap();
+        const TEST_ITEM_KEY: &str = "user_129310";
+
+        storage.set(TEST_ITEM_KEY, value.as_bytes()).await.unwrap();
 
         // Make sure all messages are written to the disk before we continue with our tests
         storage.flush().await.unwrap();
 
-        let result = storage.get(0).await.unwrap();
+        let result = storage.get(TEST_ITEM_KEY).await.unwrap();
 
         assert_eq!(result, value.as_bytes());
     }
 
     #[async_std::test]
-    #[cfg_attr(miri, ignore)]
     async fn get_returns_ok() {
         let message_count = 500;
-        let test_message = b"messssagee";
+        let test_message = b"testable message here";
 
         let mut storage = setup_test_storage(&function!(), test_message, message_count).await;
 
@@ -260,8 +244,7 @@ mod tests {
         let now = Instant::now();
 
         for index in 0..length {
-            let message = storage.get(index).await;
-
+            let message = storage.get(&format!("key_{}", index)).await;
             assert_eq!(message, Some(&test_message[..]));
         }
 
@@ -269,13 +252,74 @@ mod tests {
 
         println!("Read {} messages in: {:.2?}", length, elapsed);
 
+        println!("storage len: {}", storage.len());
+
         assert_eq!(storage.len(), message_count);
 
         cleanup(&storage).await;
     }
 
     #[async_std::test]
-    #[cfg_attr(miri, ignore)]
+    async fn storage_loads_previous_indices() {
+        let message_count = 5;
+        let test_message = b"testable message here";
+
+        let mut storage = setup_test_storage(&function!(), test_message, message_count).await;
+
+        let length = storage.len();
+
+        storage
+            .set("test_new_key", "just a message".as_bytes())
+            .await
+            .unwrap();
+
+        storage
+            .set("test_new_key_2", "just a message".as_bytes())
+            .await
+            .unwrap();
+
+        storage
+            .set("test_new_key_3", "just a message".as_bytes())
+            .await
+            .unwrap();
+
+        storage.flush().await.unwrap();
+
+        assert_eq!(length + 3, storage.len());
+
+        cleanup(&storage).await;
+    }
+
+    #[async_std::test]
+    async fn storage_overrides_existing_keys() {
+        let message_count = 5;
+        let test_message = b"testable message here";
+
+        let mut storage = setup_test_storage(&function!(), test_message, message_count).await;
+
+        storage
+            .set("test_new_key", "first".as_bytes())
+            .await
+            .unwrap();
+        storage
+            .set("test_new_key", "second!!".as_bytes())
+            .await
+            .unwrap();
+        storage
+            .set("test_new_key", "third!!!!!!!".as_bytes())
+            .await
+            .unwrap();
+
+        storage.flush().await.unwrap();
+
+        let result = storage.get("test_new_key").await.unwrap();
+
+        assert_eq!(result, "third!!!!!!!".as_bytes());
+
+        cleanup(&storage).await;
+    }
+
+    #[async_std::test]
     async fn get_returns_none_on_index_out_of_bounds() {
         let total_count = 5;
 
@@ -283,7 +327,7 @@ mod tests {
 
         let mut storage = setup_test_storage(&function!(), test_message, total_count).await;
 
-        let get_result = storage.get(total_count).await;
+        let get_result = storage.get(&format!("key_{}", total_count)).await;
 
         assert_eq!(get_result, None);
 

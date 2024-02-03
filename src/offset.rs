@@ -1,19 +1,21 @@
-#[derive(Debug, Clone, Copy, PartialEq)]
+pub const MAX_KEY_SIZE: usize = 128;
+
+#[derive(Debug, Clone, PartialEq)]
 #[repr(C)]
 pub struct Offset {
-    index: usize,
+    key_size: usize,
+    key: [u8; MAX_KEY_SIZE],
     start: usize,
     data_size: usize,
     segment_count: usize,
 }
 
 impl Offset {
-    pub fn new(
-        index: usize,
-        start: usize,
-        end: usize,
-        segment_count: usize,
-    ) -> Result<Self, String> {
+    pub fn new(k: &str, start: usize, end: usize, segment_count: usize) -> Result<Self, String> {
+        if k.len() > MAX_KEY_SIZE {
+            return Err(format!("Provided `key` value exceeds maximum length of {} bytes. Please make your key shorter.", MAX_KEY_SIZE));
+        }
+
         if start >= end {
             return Err(format!(
                 "Start ({}) can't be greater or equal to end ({})",
@@ -21,17 +23,27 @@ impl Offset {
             ));
         }
 
+        let mut key = [0; MAX_KEY_SIZE];
+        let key_slice = &mut key[..k.len()];
+        key_slice.copy_from_slice(k.as_bytes());
+
         Ok(Self {
-            index,
+            key,
+            key_size: k.len(),
             start,
             data_size: end - start,
             segment_count,
         })
     }
 
-    pub fn from(index: usize, start: usize, data_size: usize, segment_count: usize) -> Self {
+    pub fn from(k: &str, start: usize, data_size: usize, segment_count: usize) -> Self {
+        let mut key = [0; MAX_KEY_SIZE];
+        let key_slice = &mut key[..k.len()];
+        key_slice.copy_from_slice(k.as_bytes());
+
         Self {
-            index,
+            key,
+            key_size: k.len(),
             start,
             data_size,
             segment_count,
@@ -53,5 +65,11 @@ impl Offset {
 
     pub fn segment_count(&self) -> usize {
         self.segment_count
+    }
+
+    pub fn key(&self) -> String {
+        std::str::from_utf8(&self.key[..self.key_size])
+            .unwrap()
+            .to_string()
     }
 }
