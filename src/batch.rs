@@ -49,10 +49,10 @@ impl Batch {
 
     pub fn add(
         &mut self,
+        key: &str,
         buf: &[u8],
         latest_segment_count: usize,
         latest_segment_size: usize,
-        total_offsets: usize,
     ) -> Result<BatchState, String> {
         if self.current_batch_size + buf.len() < MAX_BATCH_SIZE {
             if self.current_batch_index == 0 {
@@ -61,7 +61,7 @@ impl Batch {
             }
 
             let offset = Offset::new(
-                self.current_batch_index + total_offsets,
+                key,
                 self.current_segment_size,
                 self.current_segment_size + buf.len(),
                 latest_segment_count,

@@ -64,4 +64,8 @@ impl Offset {
     pub fn segment_count(&self) -> usize {
         self.segment_count
     }
+
+    pub fn key(&self) -> String {
+        std::str::from_utf8(&self.key).unwrap().to_string()
+    }
 }

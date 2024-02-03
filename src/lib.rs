@@ -66,7 +66,7 @@ impl Storage {
         })
     }
 
-    pub async fn set(&mut self, buf: &[u8]) -> Result<(), String> {
+    pub async fn set(&mut self, key: &str, buf: &[u8]) -> Result<(), String> {
         if buf.len() > MAX_MESSAGE_SIZE {
             return Err(format!(
                 "Payload size {} kb, max payload allowed {} kb",
@@ -84,23 +84,14 @@ impl Storage {
             .get_last_segment_size(DataType::Partition)
             .await;
 
-        let last_total_entries = self.len();
-
-        let batch_state = self.batch.add(
-            buf,
-            latest_segment_count,
-            latest_segment_size,
-            last_total_entries,
-        )?;
+        let batch_state = self
+            .batch
+            .add(key, buf, latest_segment_count, latest_segment_size)?;
 
         if batch_state == BatchState::ShouldFlush {
             self.flush().await?;
-            self.batch.add(
-                buf,
-                latest_segment_count,
-                latest_segment_size,
-                last_total_entries,
-            )?;
+            self.batch
+                .add(key, buf, latest_segment_count, latest_segment_size)?;
         }
 
         Ok(())
@@ -115,7 +106,7 @@ impl Storage {
     }
 
     async fn prune_to_disk(&mut self) -> io::Result<usize> {
-        let prune = &self.batch.get_prunable();
+        let prune: batch::Prune<'_> = self.batch.get_prunable();
 
         let latest_partition_segment = self
             .segmentation_manager
@@ -129,8 +120,7 @@ impl Storage {
             .await?;
 
         for offset in prune.offsets {
-            let length = self.indices.data.len();
-            self.indices.data.insert(length, offset.clone());
+            self.indices.data.insert(offset.key(), offset.clone());
         }
 
         let latest_indices_segment = self
@@ -151,8 +141,8 @@ impl Storage {
         self.indices.data.len()
     }
 
-    pub async fn get(&mut self, index: usize) -> Option<&[u8]> {
-        let offset = self.indices.data.get(&index).cloned()?;
+    pub async fn get(&mut self, key: &str) -> Option<&[u8]> {
+        let offset = self.indices.data.get(key).cloned()?;
 
         let segment = self
             .segmentation_manager
@@ -204,8 +194,8 @@ mod tests {
 
         let now = Instant::now();
 
-        for message in messages {
-            storage.set(message).await.unwrap();
+        for (i, message) in messages.iter().enumerate() {
+            storage.set(&format!("key_{}", i), message).await.unwrap();
         }
 
         let elapsed = now.elapsed();
@@ -236,12 +226,14 @@ mod tests {
         {"id":8,"title":"Microsoft Surface Laptop 4","description":"Style and speed. Stand out on ...","price":1499,"discountPercentage":10.23,"rating":4.43,"stock":68,"brand":"Microsoft Surface","category":"laptops","thumbnail":"https://cdn.dummyjson.com/product-images/8/thumbnail.jpg","images":["https://cdn.dummyjson.com/product-images/8/1.jpg","https://cdn.dummyjson.com/product-images/8/2.jpg","https://cdn.dummyjson.com/product-images/8/3.jpg","https://cdn.dummyjson.com/product-images/8/4.jpg","https://cdn.dummyjson.com/product-images/8/thumbnail.jpg"]}
         "#;
 
-        storage.set(value.as_bytes()).await.unwrap();
+        const item_key: &str = "user_129310";
+
+        storage.set(item_key, value.as_bytes()).await.unwrap();
 
         // Make sure all messages are written to the disk before we continue with our tests
         storage.flush().await.unwrap();
 
-        let result = storage.get(0).await.unwrap();
+        let result = storage.get(item_key).await.unwrap();
 
         assert_eq!(result, value.as_bytes());
     }
@@ -258,8 +250,7 @@ mod tests {
         let now = Instant::now();
 
         for index in 0..length {
-            let message = storage.get(index).await;
-
+            let message = storage.get(&format!("key_{}", index)).await;
             assert_eq!(message, Some(&test_message[..]));
         }
 
@@ -280,7 +271,7 @@ mod tests {
 
         let mut storage = setup_test_storage(&function!(), test_message, total_count).await;
 
-        let get_result = storage.get(total_count).await;
+        let get_result = storage.get(&format!("key_{}", total_count)).await;
 
         assert_eq!(get_result, None);
 
