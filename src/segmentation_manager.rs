@@ -1,4 +1,4 @@
-use std::{ptr::NonNull, sync::Arc};
+use std::{os::unix::fs::MetadataExt, ptr::NonNull, sync::Arc};
 
 use async_std::io;
 

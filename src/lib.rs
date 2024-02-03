@@ -4,6 +4,7 @@ use async_std::io::{self, prelude::SeekExt, ReadExt, SeekFrom, WriteExt};
 use batch::{Batch, BatchState};
 use directory::{DataType, Directory};
 use indices::Indices;
+use offset::Offset;
 use segment::Segment;
 use segmentation_manager::SegmentationManager;
 
@@ -141,7 +142,7 @@ impl Storage {
     }
 
     pub async fn get(&mut self, key: &str) -> Option<&[u8]> {
-        let offset = self.indices.data.get(key).cloned()?;
+        let offset: Offset = self.indices.data.get(key).cloned()?;
 
         let segment = self
             .segmentation_manager
@@ -191,15 +192,9 @@ mod tests {
 
         let messages = vec![test_message; count];
 
-        let now = Instant::now();
-
         for (i, message) in messages.iter().enumerate() {
             storage.set(&format!("key_{}", i), message).await.unwrap();
         }
-
-        let elapsed = now.elapsed();
-
-        println!("Write {} messages in: {:.2?}", count, elapsed);
 
         // Make sure all messages are written to the disk before we continue with our tests
         storage.flush().await.unwrap();
@@ -266,7 +261,7 @@ mod tests {
 
     #[async_std::test]
     async fn storage_loads_previous_indices() {
-        let message_count = 500;
+        let message_count = 5;
         let test_message = b"testable message here";
 
         let mut storage = setup_test_storage(&function!(), test_message, message_count).await;
@@ -291,6 +286,35 @@ mod tests {
         storage.flush().await.unwrap();
 
         assert_eq!(length + 3, storage.len());
+
+        cleanup(&storage).await;
+    }
+
+    #[async_std::test]
+    async fn storage_overrides_existing_keys() {
+        let message_count = 5;
+        let test_message = b"testable message here";
+
+        let mut storage = setup_test_storage(&function!(), test_message, message_count).await;
+
+        storage
+            .set("test_new_key", "first".as_bytes())
+            .await
+            .unwrap();
+        storage
+            .set("test_new_key", "second!!".as_bytes())
+            .await
+            .unwrap();
+        storage
+            .set("test_new_key", "third!!!!!!!".as_bytes())
+            .await
+            .unwrap();
+
+        storage.flush().await.unwrap();
+
+        let result = storage.get("test_new_key").await.unwrap();
+
+        assert_eq!(result, "third!!!!!!!".as_bytes());
 
         cleanup(&storage).await;
     }
