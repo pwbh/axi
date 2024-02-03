@@ -261,7 +261,38 @@ mod tests {
 
         assert_eq!(storage.len(), message_count);
 
-        // cleanup(&storage).await;
+        cleanup(&storage).await;
+    }
+
+    #[async_std::test]
+    async fn storage_loads_previous_indices() {
+        let message_count = 500;
+        let test_message = b"testable message here";
+
+        let mut storage = setup_test_storage(&function!(), test_message, message_count).await;
+
+        let length = storage.len();
+
+        storage
+            .set("test_new_key", "just a message".as_bytes())
+            .await
+            .unwrap();
+
+        storage
+            .set("test_new_key_2", "just a message".as_bytes())
+            .await
+            .unwrap();
+
+        storage
+            .set("test_new_key_3", "just a message".as_bytes())
+            .await
+            .unwrap();
+
+        storage.flush().await.unwrap();
+
+        assert_eq!(length + 3, storage.len());
+
+        cleanup(&storage).await;
     }
 
     #[async_std::test]
